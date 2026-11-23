@@ -258,21 +258,38 @@
         cont.innerHTML = '<p class="empty">Todavía no hay reseñas. ¡Sé el primero!</p>';
         return;
       }
-      // FALLA (XSS almacenado): el texto de la reseña viene de la base y se
-      // inyecta con innerHTML → se ejecuta en el navegador de cada visitante.
-      cont.innerHTML = resp.data.comentarios.map(function (c) {
+
+      cont.textContent = '';
+      resp.data.comentarios.forEach(function (c) {
         var estrellas = '';
         var i;
-        for (i = 0; i < Number(c.calificacion || 0); i++) estrellas += '★';
-        return '' +
-          '<article class="review">' +
-          '  <div class="review-head">' +
-          '    <span class="review-author">' + raw(c.autor) + '</span>' +
-          '    <span class="review-stars">' + estrellas + '</span>' +
-          '  </div>' +
-          '  <p class="review-text">' + raw(c.texto) + '</p>' +
-          '</article>';
-      }).join('');
+        var cantidadEstrellas = Math.max(0, Math.min(5, Number(c.calificacion || 0)));
+        for (i = 0; i < cantidadEstrellas; i++) estrellas += '★';
+
+        var article = document.createElement('article');
+        article.className = 'review';
+
+        var head = document.createElement('div');
+        head.className = 'review-head';
+
+        var autorSpan = document.createElement('span');
+        autorSpan.className = 'review-author';
+        autorSpan.textContent = c.autor == null ? '' : String(c.autor);
+
+        var estrellasSpan = document.createElement('span');
+        estrellasSpan.className = 'review-stars';
+        estrellasSpan.textContent = estrellas;
+
+        var textoP = document.createElement('p');
+        textoP.className = 'review-text';
+        textoP.textContent = c.texto == null ? '' : String(c.texto);
+
+        head.appendChild(autorSpan);
+        head.appendChild(estrellasSpan);
+        article.appendChild(head);
+        article.appendChild(textoP);
+        cont.appendChild(article);
+      });
     });
   }
 
