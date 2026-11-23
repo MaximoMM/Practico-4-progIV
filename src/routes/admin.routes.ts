@@ -1,7 +1,7 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import { exec } from 'child_process';
+import { spawn } from 'child_process';;
 
 import config from '../config';
 import * as catalogo from '../services/catalogo.service';
@@ -158,17 +158,41 @@ router.post('/cambiar-contrasena', async (req, res, next) => {
  * shell.
  * -----------------------------------------------------------------------------
  */
+const HOSTS_PERMITIDOS = [
+  '127.0.0.1',
+  'localhost',
+  'proveedor-cafe.local',
+  'api.mercadopago.com',
+];
+
 router.post('/probar-conexion', (req, res) => {
   const { host } = req.body || {};
 
-  // FALLA: entrada de usuario concatenada en un comando de shell.
-  const comando = `ping -c 3 ${host}`;
+  if (typeof host !== 'string' || !HOSTS_PERMITIDOS.includes(host)) {
+    return res.status(400).json({ error: 'Host no permitido.' });
+  }
 
-  exec(comando, (error, stdout, stderr) => {
+  const proceso = spawn('ping', ['-c', '3', host], { shell: false });
+  let salida = '';
+  let errorSalida = '';
+
+  proceso.stdout.on('data', (chunk) => {
+    salida += chunk.toString();
+  });
+
+  proceso.stderr.on('data', (chunk) => {
+    errorSalida += chunk.toString();
+  });
+
+  proceso.on('error', (err) => {
+    res.status(500).json({ error: err.message });
+  });
+
+  proceso.on('close', (code) => {
     res.json({
-      comando,
-      salida: stdout,
-      error: stderr || (error ? error.message : null),
+      comando: `ping -c 3 ${host}`,
+      salida,
+      error: errorSalida || (code !== 0 ? `El proceso finalizó con código ${code}` : null),
     });
   });
 });
