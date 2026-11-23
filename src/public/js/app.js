@@ -86,40 +86,66 @@
     });
   }
 
+  function crearTag(texto, claseExtra) {
+    var span = document.createElement('span');
+    span.className = 'tag' + (claseExtra ? ' ' + claseExtra : '');
+    span.textContent = texto == null ? '' : String(texto);
+    return span;
+  }
+
   function renderProductos(productos) {
     var grid = $('#productos-grid');
+    grid.textContent = '';
 
     if (!productos || productos.length === 0) {
-      grid.innerHTML = '<p class="empty">No encontramos productos con esos filtros.</p>';
+      var vacio = document.createElement('p');
+      vacio.className = 'empty';
+      vacio.textContent = 'No encontramos productos con esos filtros.';
+      grid.appendChild(vacio);
       return;
     }
 
-    // ---------------------------------------------------------------
-    // FALLA (XSS reflejado / almacenado): el HTML se construye con
-    // innerHTML a partir de datos que vienen del servidor (nombres de
-    // producto y texto de la búsqueda). Un "<script>" en el buscador o
-    // en el nombre de un producto se ejecuta en el navegador.
-    //
-    // Corrección: usar textContent, o escapar los valores antes de
-    // interpolarlos (ver la función escaparHtml de arriba).
-    // ---------------------------------------------------------------
-    grid.innerHTML = productos.map(function (p) {
+    productos.forEach(function (p) {
       window.__productos[p.id] = p;
-      var tags = '<span class="tag">' + raw(p.tipo) + '</span>';
-      if (p.variedad) tags += '<span class="tag tag-origen">' + raw(p.variedad) + '</span>';
-      if (p.tamano) tags += '<span class="tag">' + raw(p.tamano) + '</span>';
 
-      return '' +
-        '<article class="product-card">' +
-        '  <div class="product-top">' +
-        '    <h3 class="product-name">' + raw(p.nombre) + '</h3>' +
-        '    <span class="product-price">' + money(p.precio) + '</span>' +
-        '  </div>' +
-        '  <div class="product-tags">' + tags + '</div>' +
-        '  <p class="product-desc">' + raw(p.descripcion) + '</p>' +
-        '  <button class="btn btn-ghost btn-agregar" data-id="' + raw(p.id) + '">Agregar</button>' +
-        '</article>';
-    }).join('');
+      var article = document.createElement('article');
+      article.className = 'product-card';
+
+      var top = document.createElement('div');
+      top.className = 'product-top';
+
+      var nombreH3 = document.createElement('h3');
+      nombreH3.className = 'product-name';
+      nombreH3.textContent = p.nombre == null ? '' : String(p.nombre);
+
+      var precioSpan = document.createElement('span');
+      precioSpan.className = 'product-price';
+      precioSpan.textContent = money(p.precio);
+
+      top.appendChild(nombreH3);
+      top.appendChild(precioSpan);
+
+      var tagsDiv = document.createElement('div');
+      tagsDiv.className = 'product-tags';
+      tagsDiv.appendChild(crearTag(p.tipo, ''));
+      if (p.variedad) tagsDiv.appendChild(crearTag(p.variedad, 'tag-origen'));
+      if (p.tamano) tagsDiv.appendChild(crearTag(p.tamano, ''));
+
+      var descP = document.createElement('p');
+      descP.className = 'product-desc';
+      descP.textContent = p.descripcion == null ? '' : String(p.descripcion);
+
+      var btnAgregar = document.createElement('button');
+      btnAgregar.className = 'btn btn-ghost btn-agregar';
+      btnAgregar.setAttribute('data-id', p.id == null ? '' : String(p.id));
+      btnAgregar.textContent = 'Agregar';
+
+      article.appendChild(top);
+      article.appendChild(tagsDiv);
+      article.appendChild(descP);
+      article.appendChild(btnAgregar);
+      grid.appendChild(article);
+    });
   }
 
   function renderResultado(filtros, total) {
@@ -138,7 +164,12 @@
   }
 
   function renderErrorProductos(mensaje) {
-    $('#productos-grid').innerHTML = '<p class="empty">No se pudo cargar el menú: ' + (mensaje || 'error desconocido') + '</p>';
+    var grid = $('#productos-grid');
+    grid.textContent = '';
+    var p = document.createElement('p');
+    p.className = 'empty';
+    p.textContent = 'No se pudo cargar el menú: ' + (mensaje || 'error desconocido');
+    grid.appendChild(p);
   }
 
   /* --------------------------------------------------------------- carrito */
@@ -181,38 +212,88 @@
     var lista = $('#resumen-carrito');
     var total = 0;
 
+    cont.textContent = '';
+    lista.textContent = '';
+
     if (estado.carrito.length === 0) {
-      cont.innerHTML = '<p class="empty">El carrito está vacío.</p>';
-      lista.innerHTML = '';
+      var vacio = document.createElement('p');
+      vacio.className = 'empty';
+      vacio.textContent = 'El carrito está vacío.';
+      cont.appendChild(vacio);
       $('#resumen-total').textContent = money(0);
       return;
     }
 
-    cont.innerHTML = estado.carrito.map(function (item, i) {
+    estado.carrito.forEach(function (item, i) {
       var subtotal = item.precio * item.cantidad;
       total += subtotal;
-      return '' +
-        '<div class="cart-item">' +
-        '  <div>' +
-        '    <div class="cart-item-name">' + raw(item.nombre) + '</div>' +
-        '    <div class="cart-item-meta">' + money(item.precio) + ' c/u</div>' +
-        '  </div>' +
-        '  <div class="qty-control">' +
-        '    <button type="button" data-acc="menos" data-i="' + i + '">&minus;</button>' +
-        '    <span>' + item.cantidad + '</span>' +
-        '    <button type="button" data-acc="mas" data-i="' + i + '">+</button>' +
-        '  </div>' +
-        '  <div>' +
-        '    <div class="cart-item-price">' + money(subtotal) + '</div>' +
-        '    <button type="button" class="link-danger" data-acc="quitar" data-i="' + i + '">Quitar</button>' +
-        '  </div>' +
-        '</div>';
-    }).join('');
 
-    lista.innerHTML = estado.carrito.map(function (item) {
-      return '<li><span>' + raw(item.nombre) + ' × ' + item.cantidad + '</span><span>' +
-        money(item.precio * item.cantidad) + '</span></li>';
-    }).join('');
+      var row = document.createElement('div');
+      row.className = 'cart-item';
+
+      var infoDiv = document.createElement('div');
+      var nameDiv = document.createElement('div');
+      nameDiv.className = 'cart-item-name';
+      nameDiv.textContent = item.nombre == null ? '' : String(item.nombre);
+
+      var metaDiv = document.createElement('div');
+      metaDiv.className = 'cart-item-meta';
+      metaDiv.textContent = money(item.precio) + ' c/u';
+
+      infoDiv.appendChild(nameDiv);
+      infoDiv.appendChild(metaDiv);
+
+      var qtyDiv = document.createElement('div');
+      qtyDiv.className = 'qty-control';
+
+      var btnMenos = document.createElement('button');
+      btnMenos.type = 'button';
+      btnMenos.setAttribute('data-acc', 'menos');
+      btnMenos.setAttribute('data-i', String(i));
+      btnMenos.textContent = '−';
+
+      var qtySpan = document.createElement('span');
+      qtySpan.textContent = String(item.cantidad);
+
+      var btnMas = document.createElement('button');
+      btnMas.type = 'button';
+      btnMas.setAttribute('data-acc', 'mas');
+      btnMas.setAttribute('data-i', String(i));
+      btnMas.textContent = '+';
+
+      qtyDiv.appendChild(btnMenos);
+      qtyDiv.appendChild(qtySpan);
+      qtyDiv.appendChild(btnMas);
+
+      var priceDiv = document.createElement('div');
+      var priceSub = document.createElement('div');
+      priceSub.className = 'cart-item-price';
+      priceSub.textContent = money(subtotal);
+
+      var btnQuitar = document.createElement('button');
+      btnQuitar.type = 'button';
+      btnQuitar.className = 'link-danger';
+      btnQuitar.setAttribute('data-acc', 'quitar');
+      btnQuitar.setAttribute('data-i', String(i));
+      btnQuitar.textContent = 'Quitar';
+
+      priceDiv.appendChild(priceSub);
+      priceDiv.appendChild(btnQuitar);
+
+      row.appendChild(infoDiv);
+      row.appendChild(qtyDiv);
+      row.appendChild(priceDiv);
+      cont.appendChild(row);
+
+      var li = document.createElement('li');
+      var liNombre = document.createElement('span');
+      liNombre.textContent = (item.nombre == null ? '' : String(item.nombre)) + ' × ' + item.cantidad;
+      var liTotal = document.createElement('span');
+      liTotal.textContent = money(subtotal);
+      li.appendChild(liNombre);
+      li.appendChild(liTotal);
+      lista.appendChild(li);
+    });
 
     $('#resumen-total').textContent = money(total);
   }
@@ -232,9 +313,8 @@
       }),
     }).then(function (resp) {
       if (!resp.ok) {
-        // FALLA (XSS reflejado): el mensaje del servidor se pinta con innerHTML.
         feedback.className = 'form-feedback is-error';
-        feedback.innerHTML = 'No pudimos enviar el pedido: ' + (resp.data.error || 'error desconocido');
+        feedback.textContent = 'No pudimos enviar el pedido: ' + (resp.data.error || 'error desconocido');
         return;
       }
       feedback.className = 'form-feedback is-ok';
@@ -254,12 +334,16 @@
   function cargarReseñas() {
     return api('/comentarios').then(function (resp) {
       var cont = $('#lista-resenas');
+      cont.textContent = '';
+
       if (!resp.ok || !resp.data.comentarios || resp.data.comentarios.length === 0) {
-        cont.innerHTML = '<p class="empty">Todavía no hay reseñas. ¡Sé el primero!</p>';
+        var vacio = document.createElement('p');
+        vacio.className = 'empty';
+        vacio.textContent = 'Todavía no hay reseñas. ¡Sé el primero!';
+        cont.appendChild(vacio);
         return;
       }
 
-      cont.textContent = '';
       resp.data.comentarios.forEach(function (c) {
         var estrellas = '';
         var i;
@@ -306,7 +390,7 @@
     }).then(function (resp) {
       if (!resp.ok) {
         feedback.className = 'form-feedback is-error';
-        feedback.innerHTML = 'No se pudo publicar: ' + (resp.data.error || 'error desconocido');
+        feedback.textContent = 'No se pudo publicar: ' + (resp.data.error || 'error desconocido');
         return;
       }
       feedback.className = 'form-feedback is-ok';
