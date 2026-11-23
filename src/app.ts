@@ -1,8 +1,10 @@
 import path from 'path';
+import crypto from 'crypto';
 import express from 'express';
 import helmet from 'helmet';
 
 import config from './config';
+import { leerCookies } from './middleware/sesion';
 import { rutaNoEncontrada, manejadorErrores } from './middleware/errores';
 import authRoutes from './routes/auth.routes';
 import productosRoutes from './routes/productos.routes';
@@ -14,16 +16,6 @@ import debugRoutes from './routes/debug.routes';
 
 const app = express();
 
-/**
- * FALLA — Ajustes de configuración (OWASP A05:2021)
- *
- * Faltan:
- *  - helmet (cabeceras de seguridad: CSP, X-Content-Type-Options, HSTS...)
- *  - límite de tamaño del cuerpo más estricto por ruta
- *  - rate limiting global
- *  - política de CORS restringida al propio origen
- *  - helmet CSP además sirve como capa extra frente al XSS
- */
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -48,6 +40,39 @@ app.use('/uploads', express.static(config.uploadsDir));
 
 // Sitio web estático
 app.use(express.static(path.join(__dirname, 'public')));
+
+// --- Token anti-CSRF (Double-Submit Cookie) ---------------------------------
+app.get('/api/csrf-token', (req, res) => {
+  const cookies = leerCookies(req);
+  const token = cookies.csrf || crypto.randomBytes(24).toString('hex');
+
+  res.cookie('csrf', token, {
+    path: '/',
+    httpOnly: false,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+  });
+
+  res.json({ token, csrfToken: token });
+});
+
+app.use('/api', (req, res, next) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  if (req.path === '/auth/login') return next();
+
+  const cookies = leerCookies(req);
+  const tokenCookie = cookies.csrf;
+  const tokenEnviado =
+    req.get('x-csrf-token') ||
+    (req.body && typeof req.body._csrf === 'string' ? req.body._csrf : undefined) ||
+    (typeof req.query._csrf === 'string' ? req.query._csrf : undefined);
+
+  if (!tokenCookie || !tokenEnviado || tokenCookie !== tokenEnviado) {
+    return res.status(403).json({ error: 'Token anti-CSRF inválido o ausente.' });
+  }
+
+  return next();
+});
 
 // --- API --------------------------------------------------------------------
 app.get('/api/salud', (req, res) => {
