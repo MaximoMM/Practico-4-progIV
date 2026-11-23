@@ -35,16 +35,31 @@ type Id = number | string;
 export async function listar(filtros: FiltrosCatalogo = {}): Promise<ProductoConPrecio[]> {
   const { tipo, variedad, q } = filtros;
 
-  // FALLA: concatenación directa de entrada de usuario en la consulta.
-  let sql = 'SELECT * FROM productos WHERE activo = true';
-  if (tipo) sql += ` AND tipo = '${tipo}'`;
-  if (variedad) sql += ` AND variedad = '${variedad}'`;
-  if (q) {
-    sql += ` AND (nombre ILIKE '%${q}%' OR descripcion ILIKE '%${q}%')`;
-  }
-  sql += ' ORDER BY tipo, variedad NULLS FIRST, id';
+  const condiciones: string[] = ['activo = true'];
+  const valores: unknown[] = [];
+  let idx = 1;
 
-  const { rows } = await db.query<Producto>(sql);
+  if (tipo) {
+    condiciones.push(`tipo = $${idx}`);
+    valores.push(tipo);
+    idx += 1;
+  }
+
+  if (variedad) {
+    condiciones.push(`variedad = $${idx}`);
+    valores.push(variedad);
+    idx += 1;
+  }
+
+  if (q) {
+    const patron = `%${q}%`;
+    condiciones.push(`(nombre ILIKE $${idx} OR descripcion ILIKE $${idx})`);
+    valores.push(patron);
+    idx += 1;
+  }
+
+  const sql = `SELECT * FROM productos WHERE ${condiciones.join(' AND ')} ORDER BY tipo, variedad NULLS FIRST, id`;
+  const { rows } = await db.query<Producto>(sql, valores);
 
   return rows.map((p) => ({ ...p, precio: calcularPrecio(p) }));
 }
