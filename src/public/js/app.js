@@ -6,6 +6,7 @@
 
   var API = '/api';
   var CARRITO_KEY = 'origen.carrito';
+  var csrfTokenCache = null;
 
   var estado = {
     tipo: '',
@@ -22,15 +23,33 @@
     return n.toLocaleString('es-AR', { style: 'currency', currency: 'ARS' });
   }
 
-  function raw(valor) {
-    // FALLA: esta función NO escapa nada, devuelve el valor tal cual.
-    // La forma correcta de renderizar texto del servidor es escaparHtml()
-    // (o textContent en vez de innerHTML).
-    return String(valor == null ? '' : valor);
+  function crearElemento(tag, clase, texto) {
+    var el = document.createElement(tag);
+    if (clase) el.className = clase;
+    if (texto !== undefined && texto !== null) el.textContent = String(texto);
+    return el;
+  }
+
+  function limpiarNodo(nodo) {
+    while (nodo.firstChild) {
+      nodo.removeChild(nodo.firstChild);
+    }
+  }
+
+  function obtenerCsrf() {
+    if (csrfTokenCache) return Promise.resolve(csrfTokenCache);
+    return fetch(API + '/csrf-token', { credentials: 'same-origin' })
+      .then(function (res) { return res.json(); })
+      .then(function (data) {
+        csrfTokenCache = data.token || data.csrfToken || '';
+        return csrfTokenCache;
+      })
+      .catch(function () { return ''; });
   }
 
   function api(url, opciones) {
-    return fetch(API + url, opciones).then(function (res) {
+    var opts = Object.assign({ credentials: 'same-origin' }, opciones || {});
+    return fetch(API + url, opts).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (data) {
         return { ok: res.ok, status: res.status, data: data };
       });
@@ -38,10 +57,16 @@
   }
 
   function postJSON(url, cuerpo) {
-    return api(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(cuerpo || {}),
+    return obtenerCsrf().then(function (token) {
+      var payload = Object.assign({}, cuerpo || {}, { _csrf: token });
+      return api(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-Token': token,
+        },
+        body: JSON.stringify(payload),
+      });
     });
   }
 
@@ -57,12 +82,6 @@
     } catch (e) {
       return [];
     }
-  }
-
-  function escaparHtml(texto) {
-    var div = document.createElement('div');
-    div.textContent = texto == null ? '' : String(texto);
-    return div.innerHTML;
   }
 
   /* ------------------------------------------------------------- catálogo */
@@ -95,56 +114,37 @@
 
   function renderProductos(productos) {
     var grid = $('#productos-grid');
-    grid.textContent = '';
+    limpiarNodo(grid);
 
     if (!productos || productos.length === 0) {
-      var vacio = document.createElement('p');
-      vacio.className = 'empty';
-      vacio.textContent = 'No encontramos productos con esos filtros.';
-      grid.appendChild(vacio);
+      grid.appendChild(crearElemento('p', 'empty', 'No encontramos productos con esos filtros.'));
       return;
     }
 
     productos.forEach(function (p) {
       window.__productos[p.id] = p;
 
-      var article = document.createElement('article');
-      article.className = 'product-card';
+      var card = crearElemento('article', 'product-card');
 
-      var top = document.createElement('div');
-      top.className = 'product-top';
+      var top = crearElemento('div', 'product-top');
+      top.appendChild(crearElemento('h3', 'product-name', p.nombre));
+      top.appendChild(crearElemento('span', 'product-price', money(p.precio)));
 
-      var nombreH3 = document.createElement('h3');
-      nombreH3.className = 'product-name';
-      nombreH3.textContent = p.nombre == null ? '' : String(p.nombre);
+      var tags = crearElemento('div', 'product-tags');
+      tags.appendChild(crearElemento('span', 'tag', p.tipo));
+      if (p.variedad) tags.appendChild(crearElemento('span', 'tag tag-origen', p.variedad));
+      if (p.tamano) tags.appendChild(crearElemento('span', 'tag', p.tamano));
 
-      var precioSpan = document.createElement('span');
-      precioSpan.className = 'product-price';
-      precioSpan.textContent = money(p.precio);
+      var desc = crearElemento('p', 'product-desc', p.descripcion);
 
-      top.appendChild(nombreH3);
-      top.appendChild(precioSpan);
+      var btn = crearElemento('button', 'btn btn-ghost btn-agregar', 'Agregar');
+      btn.setAttribute('data-id', String(p.id));
 
-      var tagsDiv = document.createElement('div');
-      tagsDiv.className = 'product-tags';
-      tagsDiv.appendChild(crearTag(p.tipo, ''));
-      if (p.variedad) tagsDiv.appendChild(crearTag(p.variedad, 'tag-origen'));
-      if (p.tamano) tagsDiv.appendChild(crearTag(p.tamano, ''));
-
-      var descP = document.createElement('p');
-      descP.className = 'product-desc';
-      descP.textContent = p.descripcion == null ? '' : String(p.descripcion);
-
-      var btnAgregar = document.createElement('button');
-      btnAgregar.className = 'btn btn-ghost btn-agregar';
-      btnAgregar.setAttribute('data-id', p.id == null ? '' : String(p.id));
-      btnAgregar.textContent = 'Agregar';
-
-      article.appendChild(top);
-      article.appendChild(tagsDiv);
-      article.appendChild(descP);
-      article.appendChild(btnAgregar);
-      grid.appendChild(article);
+      card.appendChild(top);
+      card.appendChild(tags);
+      card.appendChild(desc);
+      card.appendChild(btn);
+      grid.appendChild(card);
     });
   }
 
@@ -165,11 +165,10 @@
 
   function renderErrorProductos(mensaje) {
     var grid = $('#productos-grid');
-    grid.textContent = '';
-    var p = document.createElement('p');
-    p.className = 'empty';
-    p.textContent = 'No se pudo cargar el menú: ' + (mensaje || 'error desconocido');
-    grid.appendChild(p);
+    limpiarNodo(grid);
+    grid.appendChild(
+      crearElemento('p', 'empty', 'No se pudo cargar el menú: ' + (mensaje || 'error desconocido'))
+    );
   }
 
   /* --------------------------------------------------------------- carrito */
@@ -212,14 +211,11 @@
     var lista = $('#resumen-carrito');
     var total = 0;
 
-    cont.textContent = '';
-    lista.textContent = '';
+    limpiarNodo(cont);
+    limpiarNodo(lista);
 
     if (estado.carrito.length === 0) {
-      var vacio = document.createElement('p');
-      vacio.className = 'empty';
-      vacio.textContent = 'El carrito está vacío.';
-      cont.appendChild(vacio);
+      cont.appendChild(crearElemento('p', 'empty', 'El carrito está vacío.'));
       $('#resumen-total').textContent = money(0);
       return;
     }
@@ -228,70 +224,45 @@
       var subtotal = item.precio * item.cantidad;
       total += subtotal;
 
-      var row = document.createElement('div');
-      row.className = 'cart-item';
+      var row = crearElemento('div', 'cart-item');
 
-      var infoDiv = document.createElement('div');
-      var nameDiv = document.createElement('div');
-      nameDiv.className = 'cart-item-name';
-      nameDiv.textContent = item.nombre == null ? '' : String(item.nombre);
+      var info = document.createElement('div');
+      info.appendChild(crearElemento('div', 'cart-item-name', item.nombre));
+      info.appendChild(crearElemento('div', 'cart-item-meta', money(item.precio) + ' c/u'));
 
-      var metaDiv = document.createElement('div');
-      metaDiv.className = 'cart-item-meta';
-      metaDiv.textContent = money(item.precio) + ' c/u';
-
-      infoDiv.appendChild(nameDiv);
-      infoDiv.appendChild(metaDiv);
-
-      var qtyDiv = document.createElement('div');
-      qtyDiv.className = 'qty-control';
-
-      var btnMenos = document.createElement('button');
+      var qty = crearElemento('div', 'qty-control');
+      var btnMenos = crearElemento('button', null, '−');
       btnMenos.type = 'button';
       btnMenos.setAttribute('data-acc', 'menos');
       btnMenos.setAttribute('data-i', String(i));
-      btnMenos.textContent = '−';
 
-      var qtySpan = document.createElement('span');
-      qtySpan.textContent = String(item.cantidad);
+      var spanCant = crearElemento('span', null, String(item.cantidad));
 
-      var btnMas = document.createElement('button');
+      var btnMas = crearElemento('button', null, '+');
       btnMas.type = 'button';
       btnMas.setAttribute('data-acc', 'mas');
       btnMas.setAttribute('data-i', String(i));
-      btnMas.textContent = '+';
 
-      qtyDiv.appendChild(btnMenos);
-      qtyDiv.appendChild(qtySpan);
-      qtyDiv.appendChild(btnMas);
+      qty.appendChild(btnMenos);
+      qty.appendChild(spanCant);
+      qty.appendChild(btnMas);
 
-      var priceDiv = document.createElement('div');
-      var priceSub = document.createElement('div');
-      priceSub.className = 'cart-item-price';
-      priceSub.textContent = money(subtotal);
-
-      var btnQuitar = document.createElement('button');
+      var acciones = document.createElement('div');
+      acciones.appendChild(crearElemento('div', 'cart-item-price', money(subtotal)));
+      var btnQuitar = crearElemento('button', 'link-danger', 'Quitar');
       btnQuitar.type = 'button';
-      btnQuitar.className = 'link-danger';
       btnQuitar.setAttribute('data-acc', 'quitar');
       btnQuitar.setAttribute('data-i', String(i));
-      btnQuitar.textContent = 'Quitar';
+      acciones.appendChild(btnQuitar);
 
-      priceDiv.appendChild(priceSub);
-      priceDiv.appendChild(btnQuitar);
-
-      row.appendChild(infoDiv);
-      row.appendChild(qtyDiv);
-      row.appendChild(priceDiv);
+      row.appendChild(info);
+      row.appendChild(qty);
+      row.appendChild(acciones);
       cont.appendChild(row);
 
       var li = document.createElement('li');
-      var liNombre = document.createElement('span');
-      liNombre.textContent = (item.nombre == null ? '' : String(item.nombre)) + ' × ' + item.cantidad;
-      var liTotal = document.createElement('span');
-      liTotal.textContent = money(subtotal);
-      li.appendChild(liNombre);
-      li.appendChild(liTotal);
+      li.appendChild(crearElemento('span', null, item.nombre + ' × ' + item.cantidad));
+      li.appendChild(crearElemento('span', null, money(subtotal)));
       lista.appendChild(li);
     });
 
@@ -334,44 +305,25 @@
   function cargarReseñas() {
     return api('/comentarios').then(function (resp) {
       var cont = $('#lista-resenas');
-      cont.textContent = '';
+      limpiarNodo(cont);
 
       if (!resp.ok || !resp.data.comentarios || resp.data.comentarios.length === 0) {
-        var vacio = document.createElement('p');
-        vacio.className = 'empty';
-        vacio.textContent = 'Todavía no hay reseñas. ¡Sé el primero!';
-        cont.appendChild(vacio);
+        cont.appendChild(crearElemento('p', 'empty', 'Todavía no hay reseñas. ¡Sé el primero!'));
         return;
       }
 
       resp.data.comentarios.forEach(function (c) {
         var estrellas = '';
-        var i;
         var cantidadEstrellas = Math.max(0, Math.min(5, Number(c.calificacion || 0)));
-        for (i = 0; i < cantidadEstrellas; i++) estrellas += '★';
+        for (var i = 0; i < cantidadEstrellas; i++) estrellas += '★';
 
-        var article = document.createElement('article');
-        article.className = 'review';
+        var article = crearElemento('article', 'review');
+        var head = crearElemento('div', 'review-head');
+        head.appendChild(crearElemento('span', 'review-author', c.autor || ''));
+        head.appendChild(crearElemento('span', 'review-stars', estrellas));
 
-        var head = document.createElement('div');
-        head.className = 'review-head';
-
-        var autorSpan = document.createElement('span');
-        autorSpan.className = 'review-author';
-        autorSpan.textContent = c.autor == null ? '' : String(c.autor);
-
-        var estrellasSpan = document.createElement('span');
-        estrellasSpan.className = 'review-stars';
-        estrellasSpan.textContent = estrellas;
-
-        var textoP = document.createElement('p');
-        textoP.className = 'review-text';
-        textoP.textContent = c.texto == null ? '' : String(c.texto);
-
-        head.appendChild(autorSpan);
-        head.appendChild(estrellasSpan);
         article.appendChild(head);
-        article.appendChild(textoP);
+        article.appendChild(crearElemento('p', 'review-text', c.texto || ''));
         cont.appendChild(article);
       });
     });
@@ -403,8 +355,8 @@
   /* ------------------------------------------------------------- listeners */
   function init() {
     window.__productos = {};
+    obtenerCsrf();
 
-    // Filtros
     document.querySelectorAll('.chip').forEach(function (chip) {
       chip.addEventListener('click', function () {
         document.querySelectorAll('.chip').forEach(function (c) { c.classList.remove('is-active'); });
@@ -426,7 +378,6 @@
       temporizador = setTimeout(cargarProductos, 250);
     });
 
-    // Carrito (delegación de eventos)
     $('#productos-grid').addEventListener('click', function (e) {
       var btn = e.target.closest('.btn-agregar');
       if (!btn) return;
@@ -446,7 +397,6 @@
     $('#form-pedido').addEventListener('submit', enviarPedido);
     $('#form-resena').addEventListener('submit', enviarReseña);
 
-    // Carga inicial
     api(urlCatalogo()).then(function (resp) {
       if (resp.ok) {
         (resp.data.productos || []).forEach(function (p) { window.__productos[p.id] = p; });

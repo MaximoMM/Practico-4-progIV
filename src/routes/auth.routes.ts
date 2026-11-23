@@ -27,7 +27,7 @@ router.post('/login', limitadorLogin, async (req, res, next) => {
 
     const usuario = await usuarios.autenticar(username, password);
 
-    if (!usuario) {
+  if (!usuario) {
       return res.status(401).json({ error: 'Usuario o contraseña incorrectos.' });
     }
 

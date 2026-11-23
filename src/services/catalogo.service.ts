@@ -1,5 +1,6 @@
 import * as db from '../db';
 import { calcularPrecio } from '../catalogo';
+import { validarEntero } from '../validacion';
 import type { DatosProducto, Producto, ProductoConPrecio } from '../tipos';
 
 /** Filtros del menú, tal como llegan en la query string. */
@@ -14,22 +15,6 @@ export type DatosProductoEntrada = Partial<DatosProducto> & { activo?: boolean }
 
 /** Id tal como llega en la URL (texto) o ya convertido. */
 type Id = number | string;
-
-/**
- * Servicio de catálogo.
- *
- * -----------------------------------------------------------------------------
- * FALLA — Inyección SQL (OWASP A03:2021)
- * -----------------------------------------------------------------------------
- * Los filtros del catálogo (tipo, variedad, búsqueda) se concatenan en el
- * texto SQL. Un valor con comillas rompe la consulta y permite modificar su
- * lógica: ampliar el conjunto de resultados, leer otras tablas mediante UNION
- * o incluso borrar datos.
- *
- * Corrección: consultas parametrizadas con $1, $2, ... y listas blancas
- * (validar que `tipo` sea uno de los valores conocidos antes de usarlo).
- * -----------------------------------------------------------------------------
- */
 
 /** Lista productos aplicando los filtros del menú. */
 export async function listar(filtros: FiltrosCatalogo = {}): Promise<ProductoConPrecio[]> {
@@ -64,10 +49,13 @@ export async function listar(filtros: FiltrosCatalogo = {}): Promise<ProductoCon
   return rows.map((p) => ({ ...p, precio: calcularPrecio(p) }));
 }
 
-/** Obtiene un producto por id. */
+/** Obtiene un producto por id (consulta parametrizada y validada). */
 export async function obtener(id: Id): Promise<ProductoConPrecio | null> {
-  // FALLA: inyección SQL en el id.
-  const { rows } = await db.query<Producto>(`SELECT * FROM productos WHERE id = '${id}'`);
+  const idValido = validarEntero(id, 1, 1_000_000_000, 'id', true);
+  const { rows } = await db.query<Producto>(
+    'SELECT * FROM productos WHERE id = $1',
+    [idValido]
+  );
   if (!rows[0]) return null;
   return { ...rows[0], precio: calcularPrecio(rows[0]) };
 }
