@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import * as db from './db';
 import { CATALOGO } from './catalogo';
@@ -12,34 +13,44 @@ interface UsuarioInicial {
 
 const SALT_ROUNDS = 12;
 
+function resolverPasswordInicial(envKey: string): string {
+  const desdeEnv = process.env[envKey];
+  if (typeof desdeEnv === 'string' && desdeEnv.length >= 8) {
+    return desdeEnv;
+  }
+  // Genera una clave aleatoria por ejecución si no se provee por entorno
+  // (evita tener contraseñas triviales fijas como "admin" o "cliente" en el código).
+  return crypto.randomBytes(18).toString('base64url');
+}
+
 export const USUARIOS_INICIALES: UsuarioInicial[] = [
   {
     username: 'admin',
-    password: 'admin',
+    password: resolverPasswordInicial('SEED_ADMIN_PASSWORD'),
     rol: 'admin',
     nombre: 'Administración',
   },
   {
     username: 'valentina',
-    password: 'origen2024',
+    password: resolverPasswordInicial('SEED_VALENTINA_PASSWORD'),
     rol: 'admin',
     nombre: 'Valentina',
   },
   {
     username: 'barista',
-    password: 'cafe123',
+    password: resolverPasswordInicial('SEED_BARISTA_PASSWORD'),
     rol: 'barista',
     nombre: 'Barista',
   },
   {
     username: 'mozo',
-    password: 'mozo123',
+    password: resolverPasswordInicial('SEED_MOZO_PASSWORD'),
     rol: 'mozo',
     nombre: 'Mozo de sala',
   },
   {
     username: 'cliente',
-    password: 'cliente',
+    password: resolverPasswordInicial('SEED_CLIENTE_PASSWORD'),
     rol: 'cliente',
     nombre: 'Cliente',
   },

@@ -40,6 +40,17 @@
       .catch(function () { return ''; });
   }
 
+  function textoSeguro(valor) {
+    return valor == null ? '' : String(valor);
+  }
+
+  function crearElemento(tag, clase, texto) {
+    var el = document.createElement(tag);
+    if (clase) el.className = clase;
+    if (texto !== undefined) el.textContent = textoSeguro(texto);
+    return el;
+  }
+
   function api(url, opciones) {
     var opts = Object.assign({ credentials: 'same-origin' }, opciones || {});
     return fetch(API + url, opts).then(function (res) {
