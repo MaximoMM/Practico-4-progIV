@@ -1,8 +1,7 @@
 import express from 'express';
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
-import { exec } from 'child_process';
+import { spawn } from 'child_process';;
 
 import config from '../config';
 import * as catalogo from '../services/catalogo.service';
@@ -50,6 +49,7 @@ function detectarMimeReal(buffer: Buffer): string | null {
  * Rutas del panel de administración.
  */
 router.use(requiereSesion);
+router.use(requiereRol('admin'));
 
 /** GET /api/admin/usuarios */
 router.get('/usuarios', async (req, res, next) => {
@@ -63,13 +63,25 @@ router.get('/usuarios', async (req, res, next) => {
 /**
  * PUT /api/admin/usuarios/:id
  */
+const ROLES_PERMITIDOS = ['admin', 'barista', 'mozo', 'cliente'] as const;
+
 router.put('/usuarios/:id', async (req, res, next) => {
   try {
     const { username, nombre, rol, password } = req.body || {};
     const cambios: Partial<Usuario> = {};
     if (username !== undefined) cambios.username = username;
     if (nombre !== undefined) cambios.nombre = nombre;
-    if (rol !== undefined) cambios.rol = rol;
+
+    if (rol !== undefined) {
+      if (!req.usuario || req.usuario.rol !== 'admin') {
+        return res.status(403).json({ error: 'No tenés permisos para modificar roles.' });
+      }
+      if (!ROLES_PERMITIDOS.includes(rol)) {
+        return res.status(400).json({ error: 'Rol no válido.' });
+      }
+      cambios.rol = rol;
+    }
+
     if (password !== undefined) cambios.password = password;
 
     const usuario = await usuarios.actualizar(req.params.id, cambios);
@@ -81,7 +93,6 @@ router.put('/usuarios/:id', async (req, res, next) => {
     next(err);
   }
 });
-
 /** POST /api/admin/productos — alta de producto. */
 router.post('/productos', async (req, res, next) => {
   try {
@@ -143,16 +154,41 @@ router.post('/cambiar-contrasena', async (req, res, next) => {
 /**
  * POST /api/admin/probar-conexion
  */
+const HOSTS_PERMITIDOS = [
+  '127.0.0.1',
+  'localhost',
+  'proveedor-cafe.local',
+  'api.mercadopago.com',
+];
+
 router.post('/probar-conexion', (req, res) => {
   const { host } = req.body || {};
 
-  const comando = `ping -c 3 ${host}`;
+  if (typeof host !== 'string' || !HOSTS_PERMITIDOS.includes(host)) {
+    return res.status(400).json({ error: 'Host no permitido.' });
+  }
 
-  exec(comando, (error, stdout, stderr) => {
+  const proceso = spawn('ping', ['-c', '3', host], { shell: false });
+  let salida = '';
+  let errorSalida = '';
+
+  proceso.stdout.on('data', (chunk) => {
+    salida += chunk.toString();
+  });
+
+  proceso.stderr.on('data', (chunk) => {
+    errorSalida += chunk.toString();
+  });
+
+  proceso.on('error', (err) => {
+    res.status(500).json({ error: err.message });
+  });
+
+  proceso.on('close', (code) => {
     res.json({
-      comando,
-      salida: stdout,
-      error: stderr || (error ? error.message : null),
+      comando: `ping -c 3 ${host}`,
+      salida,
+      error: errorSalida || (code !== 0 ? `El proceso finalizó con código ${code}` : null),
     });
   });
 });
