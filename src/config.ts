@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import path from 'path';
 
 /**
@@ -17,20 +18,20 @@ export default {
   port: Number(process.env.PORT || 3000),
   nodeEnv: process.env.NODE_ENV || 'development',
 
-  db: {
+ db: {
     host: process.env.DB_HOST || 'db',
     port: Number(process.env.DB_PORT || 5432),
     database: process.env.DB_NAME || 'origen',
     // FALLA: la aplicación se conecta con el superusuario de la base de datos
     // (mínimos privilegios). Existe un usuario `origen_app` con permisos
     // reducidos para usar como corrección.
-    user: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || 'postgres',
+    user: process.env.DB_USER || 'origen_app',
+    password: process.env.DB_PASSWORD || '',
   },
 
   // FALLA: secreto fijo y predecible, escrito en el código.
   // Se necesita para firmar el token anti-CSRF (corrección del CSRF).
-  sessionSecret: 'origen-cafe-2024',
+  sessionSecret: process.env.SESSION_SECRET || crypto.randomUUID(),
 
   // FALLA: credenciales por defecto que nunca se cambian.
   credencialesPorDefecto: {
