@@ -9,6 +9,9 @@ LABEL org.opencontainers.image.title="Cafetería Origen" \
 
 WORKDIR /app
 
+# Crear grupo y usuario sin privilegios antes de copiar/ajustar permisos
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
 # Dependencias primero (capa cacheable). Se instalan también las de desarrollo
 # porque `npm test` se ejecuta DENTRO del contenedor (npm test debe quedar en
 # verde tal como se pide en la consigna del parcial).
@@ -24,8 +27,10 @@ COPY tests ./tests
 # (configuración de Docker, mínimos privilegios en la base de datos).
 COPY docker-compose.yml Dockerfile ./
 
-# Carpeta de archivos subidos
-RUN mkdir -p /app/uploads
+# Carpeta de archivos subidos y propiedad del directorio de trabajo
+RUN mkdir -p /app/uploads && chown -R appuser:appgroup /app
+
+USER appuser
 
 EXPOSE 3000
 

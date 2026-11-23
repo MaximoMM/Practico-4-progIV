@@ -8,25 +8,38 @@ export interface NuevoComentario {
   calificacion: number;
 }
 
-/**
- * Servicio de comentarios / reseñas de la cafetería.
- *
- * -----------------------------------------------------------------------------
- * FALLA — Validación de entrada débil (OWASP A04:2021)
- * -----------------------------------------------------------------------------
- * No se valida longitud, ni formato, ni que la calificación esté en rango.
- *
- * -----------------------------------------------------------------------------
- * FALLA — Cross-Site Scripting almacenado (OWASP A03:2021)
- * -----------------------------------------------------------------------------
- * El texto del comentario se guarda tal cual y luego se devuelve en las
- * respuestas JSON que la web inserta en el DOM. Como el cliente lo pinta con
- * innerHTML, el script queda almacenado en la base y se ejecuta en el
- * navegador de CADA visitante (incluidos los administradores).
- *
- * Corrección: escapar/sanear la salida en el cliente (textContent en vez de
- * innerHTML) o, mejor, sanitizar en el servidor y aplicar CSP como capa extra.
- */
+const MAX_AUTOR_LEN = 60;
+const MAX_TEXTO_LEN = 500;
+const CALIFICACION_MIN = 1;
+const CALIFICACION_MAX = 5;
+
+function limpiarTextoPlano(valor: unknown, maxLen: number, nombreCampo: string): string {
+  if (typeof valor !== 'string') {
+    throw new Error(`El campo "${nombreCampo}" debe ser un texto válido.`);
+  }
+
+  const normalizado = valor.replace(/\s+/g, ' ').trim();
+  if (!normalizado) {
+    throw new Error(`El campo "${nombreCampo}" no puede estar vacío.`);
+  }
+  if (normalizado.length > maxLen) {
+    throw new Error(`El campo "${nombreCampo}" supera el límite de ${maxLen} caracteres.`);
+  }
+  // Evita caracteres de control no imprimibles (excepto espacio normal)
+  if (/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(normalizado)) {
+    throw new Error(`El campo "${nombreCampo}" contiene caracteres no permitidos.`);
+  }
+
+  return normalizado;
+}
+
+function validarCalificacion(valor: unknown): number {
+  const num = Number(valor);
+  if (!Number.isInteger(num) || num < CALIFICACION_MIN || num > CALIFICACION_MAX) {
+    throw new Error(`La calificación debe ser un número entero entre ${CALIFICACION_MIN} y ${CALIFICACION_MAX}.`);
+  }
+  return num;
+}
 
 /** Lista todos los comentarios, del más nuevo al más viejo. */
 export async function listar(): Promise<Comentario[]> {
@@ -36,23 +49,29 @@ export async function listar(): Promise<Comentario[]> {
   return rows;
 }
 
-/** Crea un comentario. */
+/** Crea un comentario validando longitud, formato y calificación. */
 export async function crear({ autor, texto, calificacion }: NuevoComentario): Promise<Comentario> {
-  // FALLA: sin validación de longitud ni de rango de calificación.
+  const autorLimpio = limpiarTextoPlano(autor, MAX_AUTOR_LEN, 'autor');
+  const textoLimpio = limpiarTextoPlano(texto, MAX_TEXTO_LEN, 'texto');
+  const calificacionValida = validarCalificacion(calificacion);
+
   const { rows } = await db.query<Comentario>(
     `INSERT INTO comentarios (autor, texto, calificacion)
      VALUES ($1, $2, $3)
      RETURNING *`,
-    [autor, texto, calificacion]
+    [autorLimpio, textoLimpio, calificacionValida]
   );
   return rows[0];
 }
 
 /** Elimina un comentario. */
 export async function eliminar(id: number | string): Promise<Comentario | null> {
+  const idNum = Number(id);
+  if (!Number.isInteger(idNum) || idNum <= 0) return null;
+
   const { rows } = await db.query<Comentario>(
     'DELETE FROM comentarios WHERE id = $1 RETURNING *',
-    [id]
+    [idNum]
   );
   return rows[0] || null;
 }

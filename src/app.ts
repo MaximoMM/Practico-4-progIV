@@ -16,6 +16,37 @@ import debugRoutes from './routes/debug.routes';
 
 const app = express();
 
+const METODOS_MUTACION = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
+function origenPermitido(req: express.Request): boolean {
+  const hostEsperado = (req.get('x-forwarded-host') || req.get('host') || '').trim().toLowerCase();
+  if (!hostEsperado) return false;
+
+  const originHeader = req.get('origin');
+  if (originHeader) {
+    try {
+      const parsedOrigin = new URL(originHeader);
+      return parsedOrigin.host.toLowerCase() === hostEsperado;
+    } catch {
+      return false;
+    }
+  }
+
+  const refererHeader = req.get('referer');
+  if (refererHeader) {
+    try {
+      const parsedReferer = new URL(refererHeader);
+      return parsedReferer.host.toLowerCase() === hostEsperado;
+    } catch {
+      return false;
+    }
+  }
+
+  // Si no se envía Origin ni Referer (por ejemplo en pruebas automatizadas o peticiones server-to-server),
+  // se deja pasar a la siguiente validación (token anti-CSRF).
+  return true;
+}
+
 app.use(
   helmet({
     contentSecurityPolicy: {
@@ -57,7 +88,12 @@ app.get('/api/csrf-token', (req, res) => {
 });
 
 app.use('/api', (req, res, next) => {
-  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  if (!METODOS_MUTACION.has(req.method)) return next();
+
+  if (!origenPermitido(req)) {
+    return res.status(403).json({ error: 'Origen de la petición no permitido (CSRF).' });
+  }
+
   if (req.path === '/auth/login') return next();
 
   const cookies = leerCookies(req);
