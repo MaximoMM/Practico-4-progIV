@@ -125,9 +125,13 @@
   function renderResultado(filtros, total) {
     var el = $('#resultado-busqueda');
 
-    // FALLA (XSS reflejado): se interpola el texto buscado con innerHTML.
     if (filtros && filtros.q) {
-      el.innerHTML = 'Resultados para <strong>' + filtros.q + '</strong> — ' + total + ' producto(s)';
+      var strong = document.createElement('strong');
+      strong.textContent = filtros.q;
+
+      el.textContent = 'Resultados para ';
+      el.appendChild(strong);
+      el.appendChild(document.createTextNode(' — ' + total + ' producto(s)'));
     } else {
       el.textContent = total + ' producto(s) en el menú';
     }
