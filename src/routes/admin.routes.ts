@@ -29,6 +29,7 @@ const router = express.Router();
  * -----------------------------------------------------------------------------
  */
 router.use(requiereSesion);
+router.use(requiereRol('admin'));
 
 /** GET /api/admin/usuarios */
 router.get('/usuarios', async (req, res, next) => {
