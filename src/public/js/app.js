@@ -105,6 +105,13 @@
     });
   }
 
+  function crearTag(texto, claseExtra) {
+    var span = document.createElement('span');
+    span.className = 'tag' + (claseExtra ? ' ' + claseExtra : '');
+    span.textContent = texto == null ? '' : String(texto);
+    return span;
+  }
+
   function renderProductos(productos) {
     var grid = $('#productos-grid');
     limpiarNodo(grid);
